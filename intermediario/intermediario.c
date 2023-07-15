@@ -3,7 +3,7 @@
 //estructuras globales
 struct diccionario *dict; //almacena los temas y sus subscriptores
 
-//funciones auxiliares
+/*funciones auxiliares*/
 int recibir_op(int sock) {
 	//variables locales
     uint32_t res = 0;
@@ -17,10 +17,128 @@ int recibir_op(int sock) {
     //modificar dato
     return ntohl(res);
 }
+void recibir_tema(int socket, char ** tema) {
+    //variables locales
+    uint32_t res = 0;
 
-void crear_tema();
-void eliminar_tema();
-void generar_evento();
+    //recibir size nombre
+    if((recv(socket,&res,sizeof(uint32_t),MSG_WAITALL)) < 0){
+        perror("error al recibir el tamaño de la cola en el broker");
+        return;
+    }
+
+    //modificar dato
+    res = ntohl(res);
+    *tema = malloc(res);
+    
+    //recibir nombre de la cola sobre la que operar
+    if((recv(socket,*tema,res,MSG_WAITALL)) < 0){
+        perror("error al recibir el nombre del tema en el broker");
+        return;
+    }
+}
+void cerrar_conexiones(struct cola * cl, char * tema) {
+    //variables locales
+    int i, length = cola_length(cl), err = 0;
+    struct client * cli;
+    struct cola * cl_all = dic_get(dict, "all", &err);
+    
+    //notificar a todos los usuarios que se ha eliminado un tema
+    notificar_usuarios(cl_all,7,tema);   
+
+    //revisar conexiones
+    for (i = 0; i < length; i++) {
+        cli = cola_pop_front(cl, &err);
+        close(cli->sock);
+        free(cli);
+    }    
+}
+void notificar_usuarios(struct cola *cl, int oper, char * tema) {
+    //variables
+    int length = cola_length(cl), i, op = htonl(oper), err;
+    uint32_t tam_envio = htonl(strlen(tema));
+    struct iovec paq[3];
+    struct client * cli;
+    
+    //enviar datos
+    for (i = 0; i < length; i++) {
+        cli = cola_pop_front(cl,&err);
+        paq[0].iov_base = &op;
+        paq[0].iov_len = sizeof(uint32_t);
+        paq[1].iov_base = &tam_envio;
+        paq[1].iov_len = sizeof(uint32_t);
+        paq[2].iov_base = tema;
+        paq[2].iov_len = tam_envio;
+        if ((writev(cli->sock,paq,3)) < 0) {
+            perror("error al enviar el paquete al broker en createMQ");
+            return;
+        }
+        cola_push_back(cl,cli);
+    }
+}
+
+
+/*eventos editor*/
+uint32_t crear_tema(int socket) {
+    //variables locales
+    char * tema;
+    uint32_t res = 0;
+    struct cola * cl = cola_create();
+
+    //obtener tema
+    recibir_tema(socket, &tema); 
+
+    //almacenar cola: comprobar que no existe
+    if ((dic_put(dict, tema, cl)) < 0) {
+        printf("error, el tema %s ya existe\n", tema);
+        res = -1;
+    }
+    printf("creado tema \"%s\"\n",tema);
+
+    //avisar a los usuarios que hay nuevo tema
+    notificar_usuarios(cl, 8, tema);
+
+    return res;
+}
+uint32_t eliminar_tema(int socket) {
+    //variables locales
+    int existe_entrada = 0;
+    uint32_t res = 0;
+    char * tema;
+    struct cola * cl;
+
+    //obtener tema
+    recibir_tema(socket, &tema); 
+
+    //comprobar si existe cola
+    dic_get(dict,tema,&existe_entrada);
+
+    //operar
+    if (existe_entrada < 0) {
+        printf("el tema %s no existe\n",tema);
+        res = -1;
+    } else {
+        cl = dic_get(dict,tema,&existe_entrada);
+        cerrar_conexiones(cl, tema);
+        if ((dic_remove_entry(dict,tema,NULL)) < 0){
+            perror("error al eliminar la entrada del diccionario\n");
+            res = -1;
+        }
+        if ((cola_destroy(cl,NULL)) < 0) {
+            perror("error al destruir la cola\n");
+            res = -1;
+        }
+    }
+
+    if (res == 0) printf("eliminado tema \"%s\"\n",tema);
+
+    return res;
+}
+uint32_t generar_evento() {
+    return 0;
+}
+
+//eventos subscriptor
 void alta_subscripcion_tema();
 void baja_subscripcion_tema();
 void alta_recibir_tema();
@@ -30,16 +148,29 @@ void baja_recibir_tema();
 //recibe el socket y el struct en caso de 
 void recibir_mensajes(int socket) {
 	//variables locales
-	int op = 0;
-	struct iovec res_op;
+	uint32_t op = 0, res = 0;
+	struct iovec res_op[4];
 
 	//recibir operador
 	op = recibir_op(socket);
 
 	//operacion segun el operador
+    //primero tratamos la operacion, luego notificamos resultado
 	switch (op) {
 		case 0: //crear tema
+            res = crear_tema(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 		case 1: //eliminar tema
+            res = eliminar_tema(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 		case 2: //generar evento
 		case 3: //alta subscripcion a tema
 		case 4: //baja subscripcion a tema
@@ -64,6 +195,7 @@ int main(int argc, char *argv[]) {
     unsigned int tam_dir, opcion=1;
     struct sockaddr_in dir, dir_cliente;
     int s_connect = -1;
+    struct cola * cl = cola_create();
 
 	//crear conexion
     if ((s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0){
@@ -97,6 +229,7 @@ int main(int argc, char *argv[]) {
 
 	//arrancar estructuras
 	dict = dic_create();
+    dic_put(dict, "all", cl); //cola para todos los usuarios
 
 	//bucle servidor
     while (1) {

@@ -3,6 +3,7 @@
 #include "edsu_comun.h"
 
 int alta_subscripcion_tema(const char *tema) {
+	
 	return 0;
 }
 

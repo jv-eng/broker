@@ -1,3 +1,4 @@
+#define MAX_TAM_NAME 256
 
 int generar_evento(const char *tema, const char *valor);
 
