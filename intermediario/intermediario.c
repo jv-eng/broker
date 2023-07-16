@@ -70,11 +70,27 @@ void notificar_usuarios(struct cola *cl, int oper, char * tema) {
         paq[2].iov_base = tema;
         paq[2].iov_len = tam_envio;
         if ((writev(cli->sock,paq,3)) < 0) {
-            perror("error al enviar el paquete al broker en createMQ");
+            perror("error al enviar el paquete");
             return;
         }
         cola_push_back(cl,cli);
     }
+}
+int check_user(int socket, struct cola *cl) {
+    //variables locales
+    struct client * cli;
+    int i, length = cola_length(cl), pos = -1, err;
+
+    //revisar elementos
+    for (i = 0; i < length && pos == -1; i++) {
+        cli = cola_pop_front(cl, &err);
+        if (cli->sock == socket) {
+            pos = 0;
+        }
+        cola_push_back(cl, cli);
+    }
+
+    return pos;
 }
 
 
@@ -134,15 +150,41 @@ uint32_t eliminar_tema(int socket) {
 
     return res;
 }
-uint32_t generar_evento() {
-    return 0;
-}
+uint32_t generar_evento(int socket);
 
 //eventos subscriptor
-void alta_subscripcion_tema();
-void baja_subscripcion_tema();
-void alta_recibir_tema();
-void baja_recibir_tema();
+uint32_t alta_subscripcion_tema(int socket) {
+    //variables locales
+    uint32_t res = 0;
+    int err;
+    char * tema;
+    struct cola *cl;
+    struct client * cli;
+
+    //obtener tema
+    recibir_tema(socket, &tema);
+    cl = dic_get(dict, tema, &err);
+
+    //comprobar
+    if (check_user(socket, cl) < 0) {
+        perror("Error, el cliente esta ya subscrito");
+        res = -1;
+    } else {
+        cli = calloc(sizeof(struct client *), 1);
+        cli->sock = socket;
+        cola_push_back(cl, cli); //cola del tema
+        cl = dic_get(dict, "all", &err); //cola general
+        if (check_user(socket, cl) == 0) {
+            cola_push_back(cl, cli);
+        }
+        printf("cliente %d dado de alta en tema %s\n",socket,tema);
+    }
+
+    return res;
+}
+uint32_t baja_subscripcion_tema(int socket);
+uint32_t alta_recibir_tema(int socket);
+uint32_t baja_recibir_tema(int socket);
 
 //recibir y procesar mensajes
 //recibe el socket y el struct en caso de 
@@ -173,6 +215,12 @@ void recibir_mensajes(int socket) {
             break;
 		case 2: //generar evento
 		case 3: //alta subscripcion a tema
+            res = alta_subscripcion_tema(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 		case 4: //baja subscripcion a tema
 		case 5: //alta a recibir nuevos temas
 		case 6: //baja a recibir nuevos temas

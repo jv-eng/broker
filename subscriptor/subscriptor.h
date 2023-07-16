@@ -1,3 +1,4 @@
+#include <pthread.h>
 
 int alta_subscripcion_tema(const char *tema);
 
