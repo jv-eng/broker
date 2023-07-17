@@ -27,5 +27,6 @@ struct evento {
    char * msg;
 };
 struct client{
-    int sock;
+    int sock_contenidos;
+    int sock_eventos;
 };

@@ -1,4 +1,6 @@
 #include <pthread.h>
+#include "comun.h"
+#include "edsu_comun.h"
 
 int alta_subscripcion_tema(const char *tema);
 

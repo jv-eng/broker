@@ -1,11 +1,47 @@
 #include "subscriptor.h"
-#include "comun.h"
-#include "edsu_comun.h"
+
 
 void (* handler_event)(const char *, const char *);
-int sock = 0;
+int sock = 0; //socket alta/baja contenidos
+int sock_2 = 0; //segundo socket, notificar eventos
 
 void* thread_handler(void * arg) {
+    //variables locales
+    int sock = -1;
+    struct iovec paq[3];
+    uint32_t op = 5, res = -1;
+
+    //conectar con el broker
+    sock = conectar_broker();
+    if (sock < 0) {
+        perror("error al conectar con el broker");
+        return NULL;
+    }
+
+    //crear paquete para enviar 
+    op = htonl(op);
+
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+
+    //enviar paquete
+    if ((writev(sock,paq,1)) < 0) {
+        perror("error al enviar el paquete al broker en destroyMQ");
+        return NULL;
+    }
+
+    //crear segundo socket
+    sock_2 = conectar_broker();
+
+    for (;;) {
+        //recibir respuesta
+        if (recv(sock_2,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+            perror("error al recibir respuesta en la biblioteca, metodo destroy\n");
+            return NULL;
+        }
+        printf("hola, paquete recibido\n");
+    }
+
 	return NULL;
 }
 

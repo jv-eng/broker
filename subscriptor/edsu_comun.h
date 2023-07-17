@@ -3,4 +3,6 @@
    necesitar compartir los módulos editor y subscriptor,
    si es que las hubiera.
 */
+#include "comun.h"
 
+int conectar_broker();
