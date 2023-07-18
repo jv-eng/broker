@@ -4,6 +4,7 @@
 struct diccionario *dict; //almacena los temas y sus subscriptores
 int s; //socket
 struct sockaddr_in dir; //configuracion del socket
+int cod_user = 0;
 
 /*funciones auxiliares*/
 int recibir_op(int sock) {
@@ -40,59 +41,28 @@ void recibir_tema(int socket, char ** tema) {
     }
 }
 void cerrar_conexiones(struct cola * cl, char * tema) {
-    //variables locales
-    int i, length = cola_length(cl), err = 0;
-    struct client * cli;
-    struct cola * cl_all = dic_get(dict, "all", &err);
-    
-    //notificar a todos los usuarios que se ha eliminado un tema
-    notificar_usuarios(cl_all,7,tema);   
-
-    //revisar conexiones
-    for (i = 0; i < length; i++) {
-        cli = cola_pop_front(cl, &err);
-        close(cli->sock_contenidos);
-        free(cli);
-    }    
+ 
 }
 void notificar_usuarios(struct cola *cl, int oper, char * tema) {
-    //variables
-    int length = cola_length(cl), i, op = htonl(oper), err;
-    uint32_t tam_envio = htonl(strlen(tema));
-    struct iovec paq[3];
-    struct client * cli;
-    
-    //enviar datos
-    for (i = 0; i < length; i++) {
-        cli = cola_pop_front(cl,&err);
-        paq[0].iov_base = &op;
-        paq[0].iov_len = sizeof(uint32_t);
-        paq[1].iov_base = &tam_envio;
-        paq[1].iov_len = sizeof(uint32_t);
-        paq[2].iov_base = tema;
-        paq[2].iov_len = tam_envio;
-        if ((writev(cli->sock_contenidos,paq,3)) < 0) {
-            perror("error al enviar el paquete");
-            return;
-        }
-        cola_push_back(cl,cli);
-    }
+
 }
-int check_user(int socket, struct cola *cl) {
-    //variables locales
+struct client * check_user(int id, struct cola *cl) {
+     //variables locales
     struct client * cli;
     int i, length = cola_length(cl), pos = -1, err;
 
     //revisar elementos
     for (i = 0; i < length && pos == -1; i++) {
         cli = cola_pop_front(cl, &err);
-        if (cli->sock_contenidos == socket) {
+        if (cli->id == id) {
             pos = 0;
         }
         cola_push_back(cl, cli);
     }
 
-    return pos;
+    if (pos == -1) cli = NULL;
+
+    return cli;
 }
 
 
@@ -110,8 +80,8 @@ uint32_t crear_tema(int socket) {
     if ((dic_put(dict, tema, cl)) < 0) {
         printf("error, el tema %s ya existe\n", tema);
         res = -1;
-    }
-    printf("creado tema \"%s\"\n",tema);
+    } 
+    else printf("creado tema \"%s\"\n",tema);
 
     //avisar a los usuarios que hay nuevo tema
     notificar_usuarios(cl, 8, tema);
@@ -158,66 +128,107 @@ uint32_t generar_evento(int socket);
 uint32_t alta_subscripcion_tema(int socket) {
     //variables locales
     uint32_t res = 0;
-    int err, i, flag = 1;
+    int err, cod;
     char * tema;
-    struct cola *cl;
+    struct cola *cl, *cl2;
     struct client * cli;
+
+    //obtener cod
+    cod = recibir_op(socket);
 
     //obtener tema
     recibir_tema(socket, &tema);
     cl = dic_get(dict, tema, &err);
 
-    //comprobar
-    if (check_user(socket, cl) == 0) {
-        perror("Error, el cliente esta ya subscrito");
-        res = -1;
+    //comprobar usuario
+    cli = check_user(cod, cl);
+    if (cli == NULL) { //no esta subscrito
+        cl2 = dic_get(dict, "all", &err);
+        cli = check_user(cod, cl2);
+        cola_push_back(cl, cli);
+        printf("cliente %d subscrito a cola %s\n", cod, tema);
     } else {
-        if (check_user(socket, dic_get(dict, "all", &err)) == -1) {
-            //crear nueva estructura
-            cli = calloc(sizeof(struct client *), 1);
-            cli->sock_contenidos = socket;
-        } else {
-            for (i = 0; i < cola_length(cl) && flag; i++) {
-                cli = cola_pop_front(cl, &err);
-                if (cli->sock_contenidos == socket) {
-                    flag = 0;
-                }
-            }
-        }
-        cola_push_back(cl, cli); //cola del tema
-        printf("cliente %d dado de alta en tema %s\n",socket,tema);
+        printf("cliente ya subscrito\n");
+        res = -1;
     }
 
     return res;
 }
-uint32_t baja_subscripcion_tema(int socket);
+uint32_t baja_subscripcion_tema(int socket) {
+    //variables locales
+    uint32_t res = 0;
+    int err, cod, i, length, flag = 1;
+    char * tema;
+    struct cola *cl;
+    struct client * cli, * cli2;
+
+    //obtener cod
+    cod = recibir_op(socket);
+
+    //obtener tema
+    recibir_tema(socket, &tema);
+    cl = dic_get(dict, tema, &err);
+    length = cola_length(cl);
+
+    //comprobar usuario
+    cli = check_user(cod, cl);
+    if (cli != NULL) { //esta subscrito
+        for (i = 0; i < length && flag; i++) {
+            cli2 = cola_pop_front(cl,&err);
+            if (cli2->id == cli->id) {
+                flag = 0;
+            } else cola_push_back(cl,cli2);
+        }
+        printf("cliente %d desubscrito a cola %s\n", cod, tema);
+    } else {
+        printf("cliente no subscrito\n");
+        res = -1;
+    }
+
+    return res;
+}
 uint32_t alta_recibir_tema(int socket) {
+    return 0;
+}
+uint32_t baja_recibir_tema(int socket) {
+    return 0;
+}
+uint32_t alta_cliente(int socket) {
     //variables locales
     int err, sock_2;
     struct cola *cl;
     struct client * cli;
     struct sockaddr_in dir_cliente;
     unsigned int tam_dir = sizeof(dir_cliente);
+    struct iovec paq[1];
 
-    //comprobar si el cliente esta en la cola general
-    cl = dic_get(dict, "all", &err); //cola general
-    if (check_user(socket, cl) == -1) { //no existe
-        cli = calloc(sizeof(struct client *), 1);
-        cli->sock_contenidos = socket;
+    //crear cliente
+    cli = calloc(sizeof(struct client *), 1);
+    cli->id = cod_user;
+    cod_user++;
 
-        //crear segundo socket
-        if ((sock_2 = accept(s,(struct sockaddr *)&dir_cliente,&tam_dir)) < 0){
-            perror("error al aceptar una peticion en el broker");
-            exit(4);
-        }
-        cli->sock_eventos = sock_2;
+    //enviar codigo
+    paq[0].iov_base = &(cli->id);
+    paq[0].iov_len = sizeof(uint32_t);
+    if ((writev(socket,paq,1)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
 
-        cola_push_back(cl, cli);
-        printf("cliente %d dado de alta\n", cli->sock_contenidos);
-    } else printf("error\n");
+    //crear segundo socket
+    if ((sock_2 = accept(s,(struct sockaddr *)&dir_cliente,&tam_dir)) < 0){
+        perror("error al aceptar una peticion en el broker");
+        exit(4);
+    }
+
+    cli->sock_eventos = sock_2;
+
+    //almacenar cliente
+    cl = dic_get(dict, "all", &err);
+    cola_push_back(cl, cli);
+
     return 0;
 }
-uint32_t baja_recibir_tema(int socket);
 
 //recibir y procesar mensajes
 //recibe el socket y el struct en caso de 
@@ -255,6 +266,12 @@ void recibir_mensajes(int socket) {
             writev(socket, res_op, 1);
             break;
 		case 4: //baja subscripcion a tema
+            res = baja_subscripcion_tema(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 		case 5: //alta a recibir nuevos temas
             res = alta_recibir_tema(socket);
             res = htonl(res);
@@ -263,6 +280,19 @@ void recibir_mensajes(int socket) {
             writev(socket, res_op, 1);
             break;
 		case 6: //baja a recibir nuevos temas
+            res = baja_recibir_tema(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
+        case 9:
+            res = alta_cliente(socket);
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 	}
 }
 
@@ -317,6 +347,7 @@ int main(int argc, char *argv[]) {
 	//arrancar estructuras
 	dict = dic_create();
     dic_put(dict, "all", cl); //cola para todos los usuarios
+    dic_put(dict, "notif", cl); //cola para creacion/destruccion temas
 
 	//bucle servidor
     while (1) {

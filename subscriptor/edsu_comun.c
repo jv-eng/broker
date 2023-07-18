@@ -22,7 +22,7 @@ int conectar_broker() {
     }
 
     //configurar puerto
-    if ((sock = socket(PF_INET,SOCK_STREAM, IPPROTO_TCP)) < 0){
+    if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0){
         perror("error al crear el socket");
         return -1;
     }

@@ -10,7 +10,7 @@ void recibir_mensajes(int socket); //recibir el mensaje del evento
 void cerrar_conexiones(struct cola * cl, char * tema);
 //notificar si hay una creacion o destruccion de un tema
 void notificar_usuarios(struct cola *cl, int op, char * tema);
-int check_user(int socket, struct cola *cl); //ver si el usuario existe
+struct client * check_user(int id, struct cola *cl); //ver si el usuario existe
 
 //operaciones
 uint32_t crear_tema(int socket);
@@ -20,6 +20,7 @@ uint32_t alta_subscripcion_tema(int socket);
 uint32_t baja_subscripcion_tema(int socket);
 uint32_t alta_recibir_tema(int socket);
 uint32_t baja_recibir_tema(int socket);
+uint32_t alta_cliente(int socket);
 
 //estructuras
 struct evento {
@@ -27,6 +28,6 @@ struct evento {
    char * msg;
 };
 struct client{
-    int sock_contenidos;
+    int id;
     int sock_eventos;
 };
