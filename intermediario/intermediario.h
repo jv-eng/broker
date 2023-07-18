@@ -9,7 +9,7 @@ void recibir_mensajes(int socket); //recibir el mensaje del evento
 //cerrar conexiones y notificar del evento
 void cerrar_conexiones(struct cola * cl, char * tema);
 //notificar si hay una creacion o destruccion de un tema
-void notificar_usuarios(struct cola *cl, int op, char * tema);
+void notificar_usuarios(struct cola *cl, int op, char * tema, void * msg);
 struct client * check_user(int id, struct cola *cl); //ver si el usuario existe
 
 //operaciones

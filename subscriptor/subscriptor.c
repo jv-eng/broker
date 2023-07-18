@@ -35,6 +35,7 @@ void* thread_handler(void * arg) {
     struct iovec paq[1];
     uint32_t op = 9, res = -1;
     sock = conectar_broker();
+    char * buff, * buff2;
 
     //crear paquete para enviar 
     op = htonl(op);
@@ -53,7 +54,7 @@ void* thread_handler(void * arg) {
         perror("error al recibir respuesta en la biblioteca\n");
         return NULL;
     }
-    cod = htonl(cod);
+    cod = ntohl(cod);
     printf("cliente codigo %d\n",cod);
 
     //crear segundo socket
@@ -70,9 +71,73 @@ void* thread_handler(void * arg) {
             perror("error al recibir respuesta en la biblioteca\n");
             return NULL;
         }
-        res = htonl(res);//hay que procesar el tipo de evento
-    }
-
+        res = ntohl(res);
+        
+        //hay que procesar el tipo de evento
+        switch (res) {
+            case 0: //evento
+                //recibimos tam tema
+                if (recv(sock_2,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                } res = ntohl(res);
+                //recibimos tema
+                buff = malloc(sizeof(char) * res);
+                if (recv(sock_2,buff,res,MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                }
+                //recibimos tam msg
+                if (recv(sock_2,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                } res = ntohl(res);
+                //recibimos msg
+                buff2 = malloc(sizeof(char) * res);
+                if (recv(sock_2,buff2,res,MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                }
+                //imprimimos
+                handler_event(buff, buff2);
+                break;
+            case 1: //tema creado
+                //recibimos tam tema
+                if (recv(sock_2,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                } res = ntohl(res);
+                //recibimos tema
+                buff = malloc(sizeof(char) * res);
+                if (recv(sock_2,buff,res,MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                }
+                if (alta_tema_ != NULL) {
+                    alta_tema_(buff);
+                } else perror("Error, no existe manejador");
+                break;
+            case 2: //tema eliminado
+                //recibimos tam tema
+                if (recv(sock_2,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                } res = ntohl(res)-1;
+                //recibimos tema
+                buff = malloc(sizeof(char) * res);
+                if (recv(sock_2,buff,res,MSG_WAITALL) < 0){
+                    perror("error al recibir respuesta en la biblioteca\n");
+                    return NULL;
+                }
+                if (baja_tema_ != NULL) {
+                    baja_tema_(buff);
+                } else perror("Error, no existe manejador");
+                break;
+        }
+        
+    }    
+    if (buff) free(buff);
+    if (buff2) free(buff2);
 	return NULL;
 }
 
@@ -95,7 +160,7 @@ int alta_subscripcion_tema(const char *tema) {
     res = htonl(cod);
     paq[0].iov_base = &op;
     paq[0].iov_len = sizeof(uint32_t);
-    paq[1].iov_base = &cod;
+    paq[1].iov_base = &res;
     paq[1].iov_len = sizeof(uint32_t);
     paq[2].iov_base = &tam_envio;
     paq[2].iov_len = sizeof(uint32_t);
@@ -193,7 +258,7 @@ int inicio_subscriptor(void (*notif_evento)(const char *, const char *),
         pthread_mutex_lock(&mutex);
         while (existe_th == 0) {
             pthread_mutex_unlock(&mutex);
-            sleep(1);
+            sleep(0.5);
             pthread_mutex_lock(&mutex);
         }
         pthread_mutex_unlock(&mutex);

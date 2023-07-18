@@ -41,13 +41,97 @@ void recibir_tema(int socket, char ** tema) {
     }
 }
 void cerrar_conexiones(struct cola * cl, char * tema) {
- 
+    int length = cola_length(cl) - 1, i, err;
+    struct client * cli;
+    for (i = 0; i < length; i++) {
+        cli = cola_pop_front(cl, &err);
+        close(cli->sock_eventos);
+        free(cli);
+    }
+    cola_destroy(cl, NULL);
 }
-void notificar_usuarios(struct cola *cl, int oper, char * tema) {
+void notificar_usuarios(struct cola *cl, int oper, char * tema, void * msg) {
+    //variables globales
+    struct iovec paq[5];
+    struct client * cli;
+    int num_paq, tam_tema = strlen(tema)+1, tam_envio, tam_msg_envio, tam_msg, 
+        length = cola_length(cl), op, i, err, tmp =-1;
 
+    switch (oper) {
+        case 0: //caso evento
+            num_paq = 5;
+            tam_msg = strlen(msg);
+            op = 0;
+
+            op = htonl(op);
+            tam_envio = htonl(tam_tema);
+            tam_msg_envio = htonl(tam_msg);
+
+            paq[0].iov_base = &op;
+            paq[0].iov_len = sizeof(uint32_t);
+
+            paq[1].iov_base = &tam_envio;
+            paq[1].iov_len = sizeof(uint32_t);
+
+            paq[2].iov_base = (char *)tema;
+            paq[2].iov_len = tam_tema;
+
+            paq[3].iov_base = &tam_msg_envio;
+            paq[3].iov_len = sizeof(uint32_t);
+
+            paq[4].iov_base = (char *) msg;
+            paq[4].iov_len = tam_msg;
+            break;
+
+        case 1: //tema creado
+            num_paq = 3;
+            op = 1;
+
+            op = htonl(op);
+            tam_envio = htonl(tam_tema);
+
+            paq[0].iov_base = &op;
+            paq[0].iov_len = sizeof(uint32_t);
+
+            paq[1].iov_base = &tam_envio;
+            paq[1].iov_len = sizeof(uint32_t);
+
+            paq[2].iov_base = (char *)tema;
+            paq[2].iov_len = tam_tema;
+
+            break;
+
+        case 2: //tema eliminado
+            num_paq = 3;
+            op = 1;
+
+            op = htonl(op);
+            tam_envio = htonl(tam_tema);
+
+            paq[0].iov_base = &op;
+            paq[0].iov_len = sizeof(uint32_t);
+
+            paq[1].iov_base = &tam_envio;
+            paq[1].iov_len = sizeof(uint32_t);
+
+            paq[2].iov_base = (char *)tema;
+            paq[2].iov_len = tam_tema;
+
+            break;
+    }
+
+    for (i = 0; i < length; i++) {
+        cli = cola_pop_front(cl, &err);
+        if (tmp == cli->id) continue;
+        tmp = cli->id;
+        if ((writev(cli->sock_eventos,paq,num_paq)) < 0) {
+            perror("error al generar el evento");
+        }
+        cola_push_back(cl, cli);
+    }
 }
 struct client * check_user(int id, struct cola *cl) {
-     //variables locales
+    //variables locales
     struct client * cli;
     int i, length = cola_length(cl), pos = -1, err;
 
@@ -72,6 +156,7 @@ uint32_t crear_tema(int socket) {
     char * tema;
     uint32_t res = 0;
     struct cola * cl = cola_create();
+    int err;
 
     //obtener tema
     recibir_tema(socket, &tema); 
@@ -84,13 +169,14 @@ uint32_t crear_tema(int socket) {
     else printf("creado tema \"%s\"\n",tema);
 
     //avisar a los usuarios que hay nuevo tema
-    notificar_usuarios(cl, 8, tema);
+    cl = dic_get(dict, "notif", &err);
+    notificar_usuarios(cl, 1, tema, NULL);
 
     return res;
 }
 uint32_t eliminar_tema(int socket) {
     //variables locales
-    int existe_entrada = 0;
+    int existe_entrada = 0, err;
     uint32_t res = 0;
     char * tema;
     struct cola * cl;
@@ -118,11 +204,47 @@ uint32_t eliminar_tema(int socket) {
         }
     }
 
-    if (res == 0) printf("eliminado tema \"%s\"\n",tema);
+    if (res == 0) {
+        printf("eliminado tema \"%s\"\n",tema);
+        cl = dic_get(dict, "notif", &err);
+        notificar_usuarios(cl, 2, tema, NULL);
+    }
+
+    cerrar_conexiones(cl, tema);
 
     return res;
 }
-uint32_t generar_evento(int socket);
+uint32_t generar_evento(int socket) {
+    //variables locales
+    uint32_t res = 0;
+    int err;
+    char * tema;
+    void * msg = NULL;
+    struct cola * cl;
+
+    //recibir tema
+    recibir_tema(socket, &tema); 
+    cl = dic_get(dict, tema, &err);
+
+    //recibir size msg
+    if((recv(socket,&res,sizeof(uint32_t),MSG_WAITALL)) < 0){
+        perror("error al recibir el tamaño de la cola en el broker");
+        return -1;
+    }
+
+    //modificar dato
+    res = ntohl(res);
+    msg = malloc(res);
+
+    //recibir msg
+    readn(socket, msg, res);
+
+    //notificar clientes
+    printf("notificar usuarios cola %s con mensaje %p\n",tema, msg);
+    notificar_usuarios(cl, 0, tema, msg);
+
+    return 0;
+}
 
 //eventos subscriptor
 uint32_t alta_subscripcion_tema(int socket) {
@@ -246,7 +368,7 @@ uint32_t baja_recibir_tema(int socket) {
 }  
 uint32_t alta_cliente(int socket) {
     //variables locales
-    int err, sock_2;
+    int err, sock_2, tmp;
     struct cola *cl;
     struct client * cli;
     struct sockaddr_in dir_cliente;
@@ -254,12 +376,13 @@ uint32_t alta_cliente(int socket) {
     struct iovec paq[1];
 
     //crear cliente
-    cli = calloc(sizeof(struct client *), 1);
+    cli = malloc(sizeof(struct client));
     cli->id = cod_user;
     cod_user++;
 
     //enviar codigo
-    paq[0].iov_base = &(cli->id);
+    tmp = htonl(cli->id);
+    paq[0].iov_base = &tmp;
     paq[0].iov_len = sizeof(uint32_t);
     if ((writev(socket,paq,1)) < 0) {
         perror("error al enviar el paquete al broker");
@@ -286,7 +409,7 @@ uint32_t alta_cliente(int socket) {
 void recibir_mensajes(int socket) {
 	//variables locales
 	uint32_t op = 0, res = 0;
-	struct iovec res_op[4];
+	struct iovec res_op[1];
 
 	//recibir operador
 	op = recibir_op(socket);
@@ -309,6 +432,12 @@ void recibir_mensajes(int socket) {
             writev(socket, res_op, 1);
             break;
 		case 2: //generar evento
+            res = generar_evento(socket); 
+            res = htonl(res);
+            res_op[0].iov_base = &res;
+            res_op[0].iov_len = sizeof(uint32_t);
+            writev(socket, res_op, 1);
+            break;
 		case 3: //alta subscripcion a tema
             res = alta_subscripcion_tema(socket);
             res = htonl(res);
