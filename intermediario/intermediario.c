@@ -188,11 +188,62 @@ uint32_t baja_subscripcion_tema(int socket) {
     return res;
 }
 uint32_t alta_recibir_tema(int socket) {
-    return 0;
+    //variables locales
+    uint32_t res = 0;
+    int err, cod;
+    struct cola *cl;
+    struct client * cli;
+
+    //obtener cod
+    cod = recibir_op(socket);
+
+    //obtener cola
+    cl = dic_get(dict, "all", &err);
+
+    //comprobar usuario
+    cli = check_user(cod, cl);
+    if (cli != NULL) { 
+        cl = dic_get(dict, "notif", &err);
+        cola_push_back(cl, cli);
+        printf("cliente %d subscrito a temas\n", cod);
+    } else {
+        printf("cliente ya subscrito\n");
+        res = -1;
+    }
+
+    return res;
 }
 uint32_t baja_recibir_tema(int socket) {
-    return 0;
-}
+    //variables locales
+    uint32_t res = 0;
+    int err, cod, length, flag = 1, i;
+    struct cola *cl;
+    struct client * cli, * cli2;
+
+    //obtener cod
+    cod = recibir_op(socket);
+
+    //obtener cola
+    cl = dic_get(dict, "notif", &err);
+    length = cola_length(cl);
+
+    //comprobar usuario
+    cli = check_user(cod, cl);
+    if (cli != NULL) { 
+        for (i = 0; i < length && flag; i++) {
+            cli2 = cola_pop_front(cl,&err);
+            if (cli2->id == cli->id) {
+                flag = 0;
+            } else cola_push_back(cl,cli2);
+        }
+        printf("cliente %d desubscrito a temas\n", cod);
+    } else {
+        printf("cliente no subscrito a temas\n");
+        res = -1;
+    }
+
+    return res; 
+}  
 uint32_t alta_cliente(int socket) {
     //variables locales
     int err, sock_2;

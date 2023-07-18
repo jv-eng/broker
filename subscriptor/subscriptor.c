@@ -11,6 +11,7 @@ int sock_2 = -1; //segundo socket, notificar eventos
 int cod = -1; //numero de secuencia del cliente
 int existe_th = 0; //ver si se ha lanzado el thread
 int subscrito = 0; //subscrito a creacion de temas
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int isSocketOpen(int socketDescriptor) {
     int optval;
@@ -58,6 +59,10 @@ void* thread_handler(void * arg) {
     //crear segundo socket
     sock_2 = conectar_broker();
     close(sock);
+
+    pthread_mutex_lock(&mutex);
+    existe_th = 1;
+    pthread_mutex_unlock(&mutex);
 
     for (;;) {
         //recibir respuesta
@@ -134,7 +139,7 @@ int baja_subscripcion_tema(const char *tema) {
     res = htonl(cod);
     paq[0].iov_base = &op;
     paq[0].iov_len = sizeof(uint32_t);
-    paq[1].iov_base = &cod;
+    paq[1].iov_base = &res;
     paq[1].iov_len = sizeof(uint32_t);
     paq[2].iov_base = &tam_envio;
     paq[2].iov_len = sizeof(uint32_t);
@@ -183,10 +188,71 @@ int inicio_subscriptor(void (*notif_evento)(const char *, const char *),
         }
     }
 
-	return 0;
+    if (alta_tema != NULL) {
+        //esperar a que el thread cree la conexion
+        pthread_mutex_lock(&mutex);
+        while (existe_th == 0) {
+            pthread_mutex_unlock(&mutex);
+            sleep(1);
+            pthread_mutex_lock(&mutex);
+        }
+        pthread_mutex_unlock(&mutex);
+
+        //dar de alta
+        struct iovec paq[2];
+        uint32_t op = 5, res = -1;
+        sock = conectar_broker();
+
+        //crear paquete para enviar 
+        op = htonl(op);
+        res = htonl(cod);
+        paq[0].iov_base = &op;
+        paq[0].iov_len = sizeof(uint32_t);
+        paq[1].iov_base = &res;
+        paq[1].iov_len = sizeof(uint32_t);
+
+        //enviar paquete
+        if ((writev(sock,paq,2)) < 0) {
+            perror("error al enviar el paquete al broker");
+            return -1;
+        }
+
+        //recibir codigo
+        if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+            perror("error al recibir respuesta en la biblioteca\n");
+            return -1;
+        }
+    }
+    
+    return 0;
 }
 
 int fin_subscriptor() {
-	return 0;
+	//dar de alta
+    struct iovec paq[2];
+    uint32_t op = 6, res = -1;
+    sock = conectar_broker();
+
+    //crear paquete para enviar 
+    op = htonl(op);
+    res = htonl(cod);
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &res;
+    paq[1].iov_len = sizeof(uint32_t);
+
+    //enviar paquete
+    if ((writev(sock,paq,2)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir codigo
+    if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta en la biblioteca\n");
+        return -1;
+    }
+
+    return 0;
 }
 
