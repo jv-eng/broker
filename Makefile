@@ -1,11 +1,9 @@
 all:
-	cd broker/util; make
-	cd broker; make
-	cd libedsu; make
-	cd test; make
+	cd editor; make
+	cd intermediario; make
+	cd subscriptor; make
 
 clean:
-	cd broker/util; make clean
-	cd broker; make clean
-	cd libedsu; make clean
-	cd test; make clean
+	cd editor; make clean
+	cd intermediario; make clean
+	cd subscriptor; make clean
