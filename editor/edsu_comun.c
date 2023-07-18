@@ -1,1 +1,0 @@
-../subscriptor/edsu_comun.c

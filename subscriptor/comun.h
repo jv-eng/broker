@@ -1,1 +1,0 @@
-../intermediario/comun.h
