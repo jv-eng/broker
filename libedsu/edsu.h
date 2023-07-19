@@ -8,6 +8,8 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
 
 // operaciones que implementan la funcionalidad del proyecto
 int begin_clnt(void); // inicio de un cliente
