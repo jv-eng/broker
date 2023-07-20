@@ -1,8 +1,3 @@
-/*
- *
- * NO MODIFICAR
- *
- */
 #ifndef _EDSU_H
 #define _EDSU_H        1
 
@@ -31,5 +26,8 @@ int topics(); // cuántos temas existen en el sistema
 int clients(); // cuántos clientes existen en el sistema
 int subscribers(const char *tema); // cuántos subscriptores tiene este tema
 int events(); // nº eventos pendientes de recoger por este cliente
+
+int crear_tema(char * tema); //crear tema
+int eliminar_tema(char * tema); //eliminar tema
 
 #endif // _EDSU_H

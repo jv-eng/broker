@@ -1,7 +1,3 @@
-/*
- * Incluya en este fichero todas las implementaciones que pueden
- * necesitar compartir el broker y la biblioteca, si es que las hubiera.
- */
 #include "comun.h"
 
 // debe usarse para obtener un UUID para el cliente
@@ -49,9 +45,6 @@ ssize_t  writevn(int fd, struct iovec *vector, int count, size_t n) {
    return(n);
 }
 
-//COMMON: AUXILIAR FUNCTION. (FULL RECEIVER) (NO LEAK's.)
-//POST: RETORNA CARACTERES LEÍDOS
-//NOTE: SI NO LEE TODO, VOLVER A LLAMAR (ACUMULAR HASTA OBTENER TAMAÑO DESEADO)
 ssize_t readn(int fd, void *vptr, size_t n) {
    size_t    nleft;
    ssize_t   nread;

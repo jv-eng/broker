@@ -1,6 +1,8 @@
 #include "edsu.h"
 #include "comun.h"
 
+int uuid = -1;
+
 // se ejecuta antes que el main de la aplicación
 __attribute__((constructor)) void inicio(void){
     if (begin_clnt()<0) {
@@ -38,6 +40,14 @@ int publish(const char *tema, const void *evento, uint32_t tam_evento){
     return 0;
 }
 int get(char **tema, void **evento, uint32_t *tam_evento){
+    return 0;
+}
+
+//manejar temas
+int crear_tema(char * tema) {
+    return 0;
+}
+int eliminar_tema(char * tema) {
     return 0;
 }
 
