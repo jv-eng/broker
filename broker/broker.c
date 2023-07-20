@@ -49,41 +49,142 @@ void visitar_elem(void *c, void *v) {
 }
 
 //funcionalidades
-int crear_cliente() {
+int crear_cliente(int sock) {
+    //variables locales
+    uint32_t res = 0;
+    struct client * cl;
+
+    //crear cliente
+    cl = malloc(sizeof(struct client));
+    cl->cola_eventos = queue_create(0);
+    cl->cola_temas = queue_create(0);
+
+    //obtener uid
+    if (recv(sock,&(cl->id),sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta en la biblioteca\n");
+        return -1;
+    }
+    printf("UUID recibido: %s\n",cl->id);
+
+    //comprobar si el cliente existe
+    pthread_mutex_lock(&mutex);
+    if (map_put(mapa_cl, &(cl->id), cl) < 0) {
+        fprintf(stderr, "cliente duplicado\n");
+        res = -1;
+    }
+    pthread_mutex_unlock(&mutex);
+
+    return res;
+}
+int fin_cliente(int sock) {
     return 0;
 }
-int fin_cliente() {
+int subscribir(int sock) {
     return 0;
 }
-int subscribir() {
+int desubscribir(int sock) {
     return 0;
 }
-int desubscribir() {
+int publicar_evento(int sock) {
     return 0;
 }
-int publicar_evento() {
+int get_evento(int sock) {
     return 0;
 }
-int get_evento() {
-    return 0;
+int temas(int sock) {
+    pthread_mutex_lock(&mutex);
+    uint32_t res = map_size(mapa_temas);
+    pthread_mutex_unlock(&mutex);
+    return res;
 }
-int temas() {
-    return 0;
+int n_clientes(int sock) {
+    pthread_mutex_lock(&mutex);
+    uint32_t res = map_size(mapa_cl);
+    pthread_mutex_unlock(&mutex);
+    return res;
 }
-int n_clientes() {
-    return 0;
+int n_subscriptores(int sock) {
+    //variables locales
+    uint32_t res;
+    int err;
+    char * tema;
+    queue * q;
+
+    //obtener tema
+    recibir_tema(sock, &tema);
+
+    //obtener cola
+    pthread_mutex_lock(&mutex);
+    q = map_get(mapa_temas, tema, &err);
+    if (q) {
+        res = queue_length(q);
+    } else res = -1;
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
-int n_subscriptores() {
-    return 0;
+int n_eventos_pendientes(int sock) {
+    //variables locales
+    uint32_t res;
+    int err;
+    struct client * cl;
+    UUID_t uid;
+
+    //obtener cliente
+    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir uid\n");
+        return -1;
+    }
+
+    //obtener cola
+    pthread_mutex_lock(&mutex);
+    cl = map_get(mapa_cl, uid, &err);
+    if (cl) {
+        res = queue_length(cl->cola_eventos);
+    } else res = -1;
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
-int n_eventos_pendientes() {
-    return 0;
+int crear_tema(int sock) {
+    //variables locales
+    uint32_t res;
+    char * tema;
+    set * q;
+
+    //obtener tema
+    recibir_tema(sock, &tema);
+
+    //crear cola
+    q = set_create(0);
+
+    //insertar en mapa
+    pthread_mutex_lock(&mutex);
+    if (map_put(mapa_temas, tema, q) < 0) {
+        fprintf(stderr, "tema duplicado\n");
+        res = -1;
+    } else printf("creado tema %s\n",tema);
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
-int crear_tema() {
-    return 0;
-}
-int eliminar_tema() {
-    return 0;
+int eliminar_tema(int sock) {
+    //variables locales
+    uint32_t res;
+    char * tema;
+
+    //obtener tema
+    recibir_tema(sock, &tema);
+
+    //eliminar del mapa
+    pthread_mutex_lock(&mutex);
+    if (map_remove_entry(mapa_cl, tema, cerrar_conexiones) < 0) {
+        fprintf(stderr, "tema no existe\n");
+        res = -1;
+    } else printf("eliminado tema %s\n",tema);
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
 
 
@@ -212,7 +313,7 @@ int main(int argc, char *argv[]) {
     int s_connect = -1;
 
     //arrancar estructuras de datos
-    mapa_cl = map_create(key_int, 0);
+    mapa_cl = map_create(key_string, 0);
     mapa_temas = map_create(key_string, 0);
 
 	//crear conexion

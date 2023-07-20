@@ -18,16 +18,28 @@ int main(int argc, char *argv[]) {
     char *ntema;
     void *evento;
     do {
-        printf("\nSeleccione operación (ctrl-D para terminar)\n\tS: subscribe|U: unsubscribe|P: publish|G: get\n\tC: clientes en el sistema|T: temas en el sistema\n\tN: subscriptores en un tema|E: eventos pendientes del cliente\n");
+        printf("\nSeleccione operación (ctrl-D para terminar)\n\tS: subscribe|U: unsubscribe|P: publish|G: get\n\tC: clientes en el sistema|T: temas en el sistema\n\tN: subscriptores en un tema|E: eventos pendientes del cliente\n\tF: crear tema | H: eliminar tema\n");
         op=tema=NULL;
         n=scanf("%ms", &op);
         if (n!=1) continue;
-	if ((op[0]=='S') || (op[0]=='U') || (op[0]=='P') ||(op[0]=='N')) {
+	if ((op[0]=='S') || (op[0]=='U') || (op[0]=='P') ||(op[0]=='N') || (op[0]=='F') || (op[0]=='H')) {
                 printf("Introduzca el nombre del tema: ");
 		n=scanf("%ms", &tema);
 	}
         if (n!=1) continue;
         switch(op[0]) {
+            case 'F':
+                if ((v=crear_tema(tema))<0)
+                    printf("error creando tema %s\n", tema);
+                else
+                    printf("creado tema %s\n", tema);
+                break;
+            case 'H':
+                if ((v=eliminar_tema(tema))<0)
+                    printf("error eliminando tema %s\n", tema);
+                else
+                    printf("el tema %s se ha borrado correctamente\n", tema);
+                break;
             case 'S':
                 if (subscribe(tema)<0)
                     printf("error en subscripción al tema %s\n", tema);

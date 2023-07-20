@@ -20,6 +20,7 @@
 //funciones compartidas
 ssize_t readn(int fd, void *vptr, size_t n);
 ssize_t  writevn(int fd, struct iovec *vector, int count, size_t n);
+int conectar_broker();
 
 typedef char UUID_t[UUID_SIZE+1]; // +1 para el nulo del string
 
