@@ -24,10 +24,6 @@ int n_eventos_pendientes(int sock);
 int crear_tema(int sock);
 int eliminar_tema(int sock);
 
-//manejadores
-void cerrar_conexiones(void *c, void *v); //al destruir el mapa
-void visitar_elem(void *c, void *v); //revisar elementos
-
 //declarar estructuras
 struct client {
     UUID_t id; //UUID unico

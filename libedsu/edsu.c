@@ -160,7 +160,7 @@ int publish(const char *tema, const void *evento, uint32_t tam_evento){
     struct iovec paq[5];
     uint32_t res = 0, op = 4, length = strlen(tema) + 1, tam_envio, tam_ev;
     int sock = conectar_broker();
-printf("res = %d\n",tam_evento);
+
     //transformar datos
     op = htonl(op);
     tam_envio = htonl(length);
@@ -193,6 +193,51 @@ printf("res = %d\n",tam_evento);
     return ntohl(res);
 }
 int get(char **tema, void **evento, uint32_t *tam_evento){
+    //variables locales
+    struct iovec paq[2];
+    uint32_t res = 0, op = 5, tmp;
+    int sock = conectar_broker();
+
+    //transformar datos
+    op = htonl(op);
+    
+    //preparar paquete
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &uuid;
+    paq[1].iov_len = sizeof(UUID_t);
+
+    //enviar paquete
+    if ((writev(sock,paq,2)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir tema
+    if((recv(sock,&res,sizeof(uint32_t),MSG_WAITALL)) < 0){
+        perror("error al recibir el tamaño de la cola en el cliente");
+        return -1;
+    }
+    res = ntohl(res); if (res == -1) return -1;
+    *tema = malloc(res);
+    if((recv(sock,*tema,res,MSG_WAITALL)) < 0){
+        perror("error al recibir el nombre del tema en el cliente");
+        return -1;
+    }
+
+    //recibir evento
+    if((recv(sock,&tmp,sizeof(uint32_t),MSG_WAITALL)) < 0){
+        perror("error al recibir el tamaño de la cola en el broker");
+        return -1;
+    }
+    tmp = ntohl(tmp);
+    *evento = malloc(tmp);
+    if((recv(sock,*evento,tmp,MSG_WAITALL)) < 0){
+        perror("error al recibir el nombre del tema en el broker");
+        return -1;
+    }
+    *tam_evento = tmp;
+
     return 0;
 }
 

@@ -53,7 +53,7 @@ uint32_t recibir_msg(int sock, void **msg) {
     //modificar dato
     res = ntohl(res);
     *msg = malloc(res);
-    printf("res = %d\n",res);
+
     printf("%"PRIu32" CLI-PUT \n", res);
     //recibir msg
     readn(sock, *msg, res);
@@ -70,12 +70,6 @@ int check_set(struct set * s, struct uid_cl * uid) {
         //printf("comp %s - %s = %d\n",tmp->id, uid->id,res);
     }
     return res;
-}
-void cerrar_conexiones(void *c, void *v) {
-    
-}
-void visitar_elem(void *c, void *v) {
-
 }
 
 //funcionalidades
@@ -172,7 +166,7 @@ int subscribir(int sock) {
     if (check_set(s, id_cl) == 0) {
         printf("error, cliente existente\n");
         res = -1;
-    } else {
+    } else if (s) {
         //almacenar en lista de temas subscritos
         set_add(s, id_cl);
         cl = map_get(mapa_cl,id_cl->id,&err);
@@ -262,7 +256,64 @@ int publicar_evento(int sock) {
     return res;
 }
 int get_evento(int sock) {
-    return 0;
+    //variables locales
+    uint32_t res = 0, length, tam_envio, tam_ev;
+    int err, num = 0;
+    struct queue * q;
+    UUID_t uid;
+    struct event * ev;
+    struct client * cl;
+    struct iovec paq[4];
+
+    //obtener cliente
+    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir uid\n");
+        return -1;
+    }
+
+    pthread_mutex_lock(&mutex);
+    //obtener datos
+    cl = map_get(mapa_cl, uid, &err);
+    q = cl->cola_eventos;
+    ev = queue_pop_front(q,&err);
+    if (ev) {
+        num = 4;
+        //transformar datos
+        length = strlen(ev->tema) + 1;
+        tam_envio = htonl(length);
+        tam_ev = htonl(ev->tam_msg);
+        //preparar paquete
+        paq[0].iov_base = &tam_envio;
+        paq[0].iov_len = sizeof(uint32_t);
+        paq[1].iov_base = (char *) ev->tema;
+        paq[1].iov_len = length;
+        paq[2].iov_base = &tam_ev;
+        paq[2].iov_len = sizeof(uint32_t);
+        paq[3].iov_base = (void *) ev->msg;
+        paq[3].iov_len = ev->tam_msg;
+    } else {
+        num = 1;
+        tam_envio = -1;
+        tam_envio = htonl(tam_envio);
+        paq[0].iov_base = &tam_envio;
+        paq[0].iov_len = sizeof(uint32_t);
+    }
+
+    //enviar paquete
+    if ((writev(sock,paq,num)) < 0) {
+        perror("error al enviar el paquete al cliente");
+        return -1;
+    }
+
+    if (ev) {
+        ev->cont--;
+        if (ev->cont == 0) {
+            free(ev);
+        }
+    }
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
 int temas(int sock) {
     pthread_mutex_lock(&mutex);
@@ -351,7 +402,7 @@ int eliminar_tema(int sock) {
 
     //eliminar del mapa
     pthread_mutex_lock(&mutex);
-    if (map_remove_entry(mapa_cl, tema, cerrar_conexiones) < 0) {
+    if (map_remove_entry(mapa_cl, tema, NULL) < 0) {
         fprintf(stderr, "tema no existe\n");
         res = -1;
     } else printf("eliminado tema %s\n",tema);
@@ -410,10 +461,6 @@ void * recibir_mensajes(void * arg) {
             break;
         case 5: //obtener el primer evento de la cola
             res = get_evento(socket);
-            res = htonl(res);
-            res_op[0].iov_base = &res;
-            res_op[0].iov_len = sizeof(uint32_t);
-            writev(socket, res_op, 1);
             break;
         case 6: //crear un tema
             res = crear_tema(socket);
