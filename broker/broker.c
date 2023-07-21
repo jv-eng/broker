@@ -77,13 +77,118 @@ int crear_cliente(int sock) {
     return res;
 }
 int fin_cliente(int sock) {
-    return 0;
+    //variables locales
+    int res, err, length, i;
+    char * tema;
+    UUID_t uid;
+    struct client * cl;
+    struct set * s;
+    struct evento * event;
+
+    //obtener cliente
+    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir uid\n");
+        return -1;
+    }
+
+    //obtener cliente
+    pthread_mutex_lock(&mutex);
+    cl = map_get(mapa_cl, uid, &err);
+    if (cl) {
+        length = queue_length(cl->cola_temas);
+        //eliminar de las listas de temas
+        for (i = 0; i < length; i++) {
+            tema = queue_pop_front(cl->cola_temas, &err);
+            s = map_get(mapa_temas, tema, &err);
+            set_remove(s,uid,NULL);
+            free(tema);
+        }
+        //eliminar lista de eventos
+        length = queue_length(cl->cola_eventos);
+        for (i = 0; i < length; i++) {
+            event = queue_pop_front(cl->cola_eventos,&err);
+            event->cont--;
+            if (event->cont == 0) {
+                free(event);
+            }
+        }
+        map_remove_entry(mapa_cl, uid, NULL);
+        printf("fin cliente %s\n", uid);
+    } else res = -1;
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
 int subscribir(int sock) {
-    return 0;
+    //variables locales
+    int res, err;
+    char * tema;
+    UUID_t uid;
+    struct set * s;
+    struct client * cl;
+
+    //obtener uid
+    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir uid\n");
+        return -1;
+    }
+
+    //obtener tema
+    recibir_tema(sock, &tema);
+
+    //almacenar en set
+    pthread_mutex_lock(&mutex);
+    s = map_get(mapa_temas, tema, &err);
+    if (set_add(s, uid) < 0) {
+        printf("error, cliente existente\n");
+        res = -1;
+    } else {
+        //almacenar en lista de temas subscritos
+        cl = map_get(mapa_cl,uid,&err);
+        queue_push_back(cl->cola_temas, tema);
+        printf("cliente %s subscrito a tema %s\n", uid, tema);
+    }
+    pthread_mutex_unlock(&mutex);    
+
+    return res;
 }
 int desubscribir(int sock) {
-    return 0;
+    //variables locales
+    int res = 0, err, length, i, flag = 1;
+    char * tema, * tema_aux;
+    UUID_t uid;
+    struct set * s;
+    struct client * cl;
+
+    //obtener uid
+    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+        perror("error al recibir uid\n");
+        return -1;
+    }
+
+    //obtener tema
+    recibir_tema(sock, &tema);
+
+    //eliminar cliente de la subscripcion
+    pthread_mutex_lock(&mutex);
+    s = map_get(mapa_temas, tema, &err);
+    if (set_contains(s,uid) == 0) {
+        set_remove(s, uid, NULL);
+        cl = map_get(mapa_cl, uid, &err);
+        length = queue_length(cl->cola_temas);
+        for (i = 0; i < length && flag; i++) { 
+            tema_aux = queue_pop_front(cl->cola_temas,&err);
+            if (strcmp(tema, tema_aux) == 0) {
+                flag = 0;
+                printf("tema %s eliminado de cliente %s\n",tema,uid);
+            } else {
+                queue_push_back(cl->cola_temas, tema_aux);
+            }
+        }
+    } else printf("error, cliente ya subscrito\n");
+    pthread_mutex_unlock(&mutex);  
+
+    return res;
 }
 int publicar_evento(int sock) {
     return 0;

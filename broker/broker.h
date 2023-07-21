@@ -34,7 +34,8 @@ struct client {
     struct queue * cola_temas; //temas subscritos
 };
 struct evento {
-    char * tema;
-    int tam_msg;
-    void * msg;
+    char * tema; //nombre del tema
+    int tam_msg; //tamaño del mensaje
+    void * msg; //mensaje
+    int cont; //contador de copias del evento
 };

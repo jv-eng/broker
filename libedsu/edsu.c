@@ -59,13 +59,101 @@ int begin_clnt(void){
     return ntohl(res);
 }
 int end_clnt(void){
-    return 0;
+    //variables locales
+    struct iovec paq[2];
+    uint32_t res = 0, op = 1; op = htonl(op);
+    int sock = -1;
+
+    //abrir socket
+    sock = conectar_broker();
+    
+    //preparar paquete
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &uuid;
+    paq[1].iov_len = sizeof(UUID_t);
+
+    //enviar paquete
+    if ((writev(sock,paq,2)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir respuesta
+    if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta\n");
+        return -1;
+    }
+
+    return ntohl(res);
 }
 int subscribe(const char *tema){
-    return 0;
+    //variables locales
+    struct iovec paq[4];
+    uint32_t res = 0, op = 2, length = strlen(tema) + 1, tam_envio;
+    int sock = conectar_broker();
+
+    //transformar datos
+    op = ntohl(op);
+    tam_envio = ntohl(length);
+    
+    //preparar paquete
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &uuid;
+    paq[1].iov_len = sizeof(UUID_t);
+    paq[2].iov_base = &tam_envio;
+    paq[2].iov_len = sizeof(uint32_t);
+    paq[3].iov_base = (char *) tema;
+    paq[3].iov_len = tam_envio;
+
+    //enviar paquete
+    if ((writev(sock,paq,4)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir respuesta
+    if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta\n");
+        return -1;
+    }
+
+    return htonl(res);
 }
 int unsubscribe(const char *tema){
-    return 0;
+    //variables locales
+    struct iovec paq[4];
+    uint32_t res = 0, op = 3, length = strlen(tema) + 1, tam_envio;
+    int sock = conectar_broker();
+
+    //transformar datos
+    op = ntohl(op);
+    tam_envio = ntohl(length);
+    
+    //preparar paquete
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &uuid;
+    paq[1].iov_len = sizeof(UUID_t);
+    paq[2].iov_base = &tam_envio;
+    paq[2].iov_len = sizeof(uint32_t);
+    paq[3].iov_base = (char *) tema;
+    paq[3].iov_len = tam_envio;
+
+    //enviar paquete
+    if ((writev(sock,paq,4)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir respuesta
+    if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta\n");
+        return -1;
+    }
+
+    return htonl(res);
 }
 int publish(const char *tema, const void *evento, uint32_t tam_evento){
     return 0;
