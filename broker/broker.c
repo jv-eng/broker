@@ -1,7 +1,5 @@
 #include "broker.h"
-/*pthread_mutex_lock(&mutex);
-    existe_th = 1;
-    pthread_mutex_unlock(&mutex);*/
+
 //variables globales
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //mutex para acceder a las estructuras de datos
 struct map * mapa_cl; 
@@ -40,6 +38,38 @@ void recibir_tema(int socket, char ** tema) {
         perror("error al recibir el nombre del tema en el broker");
         return;
     }
+}
+//recibir mensaje, devuelve el size o -1
+uint32_t recibir_msg(int sock, void **msg) {
+    //variables locales
+    uint32_t res = 0;
+
+    //recibir size msg
+    if((recv(sock,&res,sizeof(uint32_t),MSG_WAITALL)) < 0){
+        perror("error al recibir el tamaño de la cola en el broker");
+        return -1;
+    }
+
+    //modificar dato
+    res = ntohl(res);
+    *msg = malloc(res);
+    printf("res = %d\n",res);
+    printf("%"PRIu32" CLI-PUT \n", res);
+    //recibir msg
+    readn(sock, *msg, res);
+
+    return res;
+}
+int check_set(struct set * s, struct uid_cl * uid) {
+    int res = 1;
+    struct set_iter * iter = set_iter_init(s);
+    struct uid_cl * tmp;
+    for (; set_iter_has_next(iter) && res != 0; set_iter_next(iter)) {
+        tmp = (struct uid_cl *)set_iter_value(iter);
+        res = strcmp(tmp->id, uid->id);
+        //printf("comp %s - %s = %d\n",tmp->id, uid->id,res);
+    }
+    return res;
 }
 void cerrar_conexiones(void *c, void *v) {
     
@@ -83,7 +113,7 @@ int fin_cliente(int sock) {
     UUID_t uid;
     struct client * cl;
     struct set * s;
-    struct evento * event;
+    struct event * evento;
 
     //obtener cliente
     if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
@@ -106,10 +136,10 @@ int fin_cliente(int sock) {
         //eliminar lista de eventos
         length = queue_length(cl->cola_eventos);
         for (i = 0; i < length; i++) {
-            event = queue_pop_front(cl->cola_eventos,&err);
-            event->cont--;
-            if (event->cont == 0) {
-                free(event);
+            evento = queue_pop_front(cl->cola_eventos,&err);
+            evento->cont--;
+            if (evento->cont == 0) {
+                free(evento);
             }
         }
         map_remove_entry(mapa_cl, uid, NULL);
@@ -123,12 +153,12 @@ int subscribir(int sock) {
     //variables locales
     int res, err;
     char * tema;
-    UUID_t uid;
     struct set * s;
     struct client * cl;
+    struct uid_cl * id_cl = malloc(sizeof(struct uid_cl));
 
     //obtener uid
-    if (recv(sock,&uid,sizeof(UUID_t),MSG_WAITALL) < 0){
+    if (recv(sock,id_cl->id,sizeof(UUID_t),MSG_WAITALL) < 0){
         perror("error al recibir uid\n");
         return -1;
     }
@@ -139,14 +169,15 @@ int subscribir(int sock) {
     //almacenar en set
     pthread_mutex_lock(&mutex);
     s = map_get(mapa_temas, tema, &err);
-    if (set_add(s, uid) < 0) {
+    if (check_set(s, id_cl) == 0) {
         printf("error, cliente existente\n");
         res = -1;
     } else {
         //almacenar en lista de temas subscritos
-        cl = map_get(mapa_cl,uid,&err);
+        set_add(s, id_cl);
+        cl = map_get(mapa_cl,id_cl->id,&err);
         queue_push_back(cl->cola_temas, tema);
-        printf("cliente %s subscrito a tema %s\n", uid, tema);
+        printf("cliente %s subscrito a tema %s\n", id_cl->id, tema);
     }
     pthread_mutex_unlock(&mutex);    
 
@@ -191,7 +222,44 @@ int desubscribir(int sock) {
     return res;
 }
 int publicar_evento(int sock) {
-    return 0;
+    //variables locales
+    int res = 0, err;
+    uint32_t tam = 0;
+    char * tema;
+    void * msg;
+    struct event * ev;
+    struct set * s;
+    struct set_iter * iter;
+    struct client * cl; 
+    struct uid_cl * uid;
+
+    //recibir tema
+    recibir_tema(sock, &tema);
+
+    //recibir msg
+    tam = recibir_msg(sock, &msg);
+
+    //almacenar
+    ev = malloc(sizeof(struct event));
+    ev->cont = 0;
+    ev->msg = msg;
+    ev->tam_msg = tam;
+    ev->tema = tema;
+
+    //obtener set de clientes y almacenar en las listas
+    pthread_mutex_lock(&mutex);
+    s = map_get(mapa_temas,tema,&err);
+    iter = set_iter_init(s);
+    for (; set_iter_has_next(iter); set_iter_next(iter)) {
+        uid = (struct uid_cl *)set_iter_value(iter);
+        cl = map_get(mapa_cl,uid->id,&err);
+        queue_push_back(cl->cola_eventos,ev);
+        ev->cont++;
+    }
+    set_iter_exit(iter);    
+    pthread_mutex_unlock(&mutex);
+
+    return res;
 }
 int get_evento(int sock) {
     return 0;
@@ -213,16 +281,16 @@ int n_subscriptores(int sock) {
     uint32_t res;
     int err;
     char * tema;
-    queue * q;
+    set * s;
 
     //obtener tema
     recibir_tema(sock, &tema);
 
     //obtener cola
     pthread_mutex_lock(&mutex);
-    q = map_get(mapa_temas, tema, &err);
-    if (q) {
-        res = queue_length(q);
+    s = map_get(mapa_temas, tema, &err);
+    if (s) {
+        res = set_size(s);
     } else res = -1;
     pthread_mutex_unlock(&mutex);
 

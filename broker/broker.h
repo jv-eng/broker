@@ -8,6 +8,7 @@
 void * recibir_mensajes(void * arg);
 int recibir_op(int sock);
 void recibir_tema(int socket, char ** tema);
+uint32_t recibir_msg(int sock, void **msg);
 
 //funcionalidades
 int crear_cliente(int sock);
@@ -33,9 +34,12 @@ struct client {
     struct queue * cola_eventos; //eventos pendientes
     struct queue * cola_temas; //temas subscritos
 };
-struct evento {
+struct event {
     char * tema; //nombre del tema
     int tam_msg; //tamaño del mensaje
     void * msg; //mensaje
     int cont; //contador de copias del evento
+};
+struct uid_cl {
+    UUID_t id; //identificador de cliente
 };

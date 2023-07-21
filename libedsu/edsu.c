@@ -94,8 +94,8 @@ int subscribe(const char *tema){
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
-    tam_envio = ntohl(length);
+    op = htonl(op);
+    tam_envio = htonl(length);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -119,7 +119,7 @@ int subscribe(const char *tema){
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int unsubscribe(const char *tema){
     //variables locales
@@ -128,8 +128,8 @@ int unsubscribe(const char *tema){
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
-    tam_envio = ntohl(length);
+    op = htonl(op);
+    tam_envio = htonl(length);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -153,10 +153,44 @@ int unsubscribe(const char *tema){
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int publish(const char *tema, const void *evento, uint32_t tam_evento){
-    return 0;
+    //variables locales
+    struct iovec paq[5];
+    uint32_t res = 0, op = 4, length = strlen(tema) + 1, tam_envio, tam_ev;
+    int sock = conectar_broker();
+printf("res = %d\n",tam_evento);
+    //transformar datos
+    op = htonl(op);
+    tam_envio = htonl(length);
+    tam_ev = htonl(tam_evento);
+    
+    //preparar paquete
+    paq[0].iov_base = &op;
+    paq[0].iov_len = sizeof(uint32_t);
+    paq[1].iov_base = &tam_envio;
+    paq[1].iov_len = sizeof(uint32_t);
+    paq[2].iov_base = (char *) tema;
+    paq[2].iov_len = length;
+    paq[3].iov_base = &tam_ev;
+    paq[3].iov_len = sizeof(uint32_t);
+    paq[4].iov_base = (void *) evento;
+    paq[4].iov_len = tam_evento;
+
+    //enviar paquete
+    if ((writev(sock,paq,5)) < 0) {
+        perror("error al enviar el paquete al broker");
+        return -1;
+    }
+
+    //recibir respuesta
+    if (recv(sock,&res,sizeof(uint32_t),MSG_WAITALL) < 0){
+        perror("error al recibir respuesta\n");
+        return -1;
+    }
+
+    return ntohl(res);
 }
 int get(char **tema, void **evento, uint32_t *tam_evento){
     return 0;
@@ -170,8 +204,8 @@ int crear_tema(char * tema) {
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
-    tam_envio = ntohl(length);
+    op = htonl(op);
+    tam_envio = htonl(length);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -193,7 +227,7 @@ int crear_tema(char * tema) {
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int eliminar_tema(char * tema) {
     //variables locales
@@ -202,8 +236,8 @@ int eliminar_tema(char * tema) {
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
-    tam_envio = ntohl(length);
+    op = htonl(op);
+    tam_envio = htonl(length);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -225,7 +259,7 @@ int eliminar_tema(char * tema) {
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 
 // operaciones que facilitan la depuración y la evaluación
@@ -235,7 +269,7 @@ int topics(){ // cuántos temas existen en el sistema
     uint32_t res = 0, op = 8;
     int sock = conectar_broker();
 
-    op = ntohl(op);
+    op = htonl(op);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -253,7 +287,7 @@ int topics(){ // cuántos temas existen en el sistema
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int clients(){ // cuántos clientes existen en el sistema
     //variables locales
@@ -261,7 +295,7 @@ int clients(){ // cuántos clientes existen en el sistema
     uint32_t res = 0, op = 9;
     int sock = conectar_broker();
 
-    op = ntohl(op);
+    op = htonl(op);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -279,7 +313,7 @@ int clients(){ // cuántos clientes existen en el sistema
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int subscribers(const char *tema){ // cuántos subscriptores tiene este tema
     //variables locales
@@ -288,8 +322,8 @@ int subscribers(const char *tema){ // cuántos subscriptores tiene este tema
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
-    tam_envio = ntohl(length);
+    op = htonl(op);
+    tam_envio = htonl(length);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -311,7 +345,7 @@ int subscribers(const char *tema){ // cuántos subscriptores tiene este tema
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
 int events() { // nº eventos pendientes de recoger por este cliente
     //variables locales
@@ -320,7 +354,7 @@ int events() { // nº eventos pendientes de recoger por este cliente
     int sock = conectar_broker();
 
     //transformar datos
-    op = ntohl(op);
+    op = htonl(op);
     
     //preparar paquete
     paq[0].iov_base = &op;
@@ -340,5 +374,5 @@ int events() { // nº eventos pendientes de recoger por este cliente
         return -1;
     }
 
-    return htonl(res);
+    return ntohl(res);
 }
