@@ -1,0 +1,2 @@
+openssl genpkey -algorithm RSA -out private_key.pem
+openssl req -new -key private_key.pem -x509 -days 365 -out certificate.pem
